@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IELTS Self-Study Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --primary: #38bdf8;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --text: #f8fafc;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 10px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 { font-size: 1.8rem; text-align: center; }
+        h3 { color: var(--primary); margin-top: 0; font-size: 1.2rem; }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        input, select {
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: white;
+            outline: none;
+            flex: 1;
+            min-width: 120px;
+        }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+
+        .btn-add, .btn-save { 
+            width: 100%; 
+            margin-top: 5px;
+        }
+        
+        .btn-add { background: var(--primary); color: #000; }
+        .btn-save { background: var(--success); color: #fff; }
+        
+        .task-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 10px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .task-info { display: flex; flex-direction: column; flex: 1; }
+        .task-time { font-size: 0.85em; color: #94a3b8; }
+
+        .status-btns {
+            display: flex;
+            gap: 5px;
+        }
+
+        .status-btns button {
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-check { background: rgba(34, 197, 94, 0.1); color: var(--success); border: 1px solid var(--success); }
+        .btn-check.active { background: var(--success); color: white; }
+        
+        .btn-cross { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid var(--danger); }
+        .btn-cross.active { background: var(--danger); color: white; }
+
+        .btn-del { background: transparent; color: #64748b; font-size: 1.2em; border: none; }
+
+        #chartWrapper {
+            height: 300px;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        @media (min-width: 600px) {
+            .btn-add, .btn-save { width: auto; }
+            body { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header style="margin-bottom: 20px;">
+        <h1>IELTS Tracker</h1>
+        <p id="todayDate" style="text-align: center; color: #94a3b8; margin-top: -10px;"></p>
+    </header>
+
+    <div class="card">
+        <h3>Yangi vazifa</h3>
+        <div class="input-group">
+            <input type="text" id="taskInput" placeholder="Vazifa nomi">
+            <input type="time" id="timeInput">
+            <button class="btn-add" onclick="addTask()">Qo'shish</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Bugun bajariladiganlar</h3>
+        <div id="taskList"></div>
+    </div>
+
+    <div class="card">
+        <h3>Natijalarni kiritish</h3>
+        <div class="input-group">
+            <select id="sectionSelect" onchange="renderChart()">
+                <option value="Listening">Listening</option>
+                <option value="Reading">Reading</option>
+                <option value="Writing">Writing</option>
+                <option value="Speaking">Speaking</option>
+            </select>
+            <input type="number" id="scoreInput" min="0" max="40" placeholder="Ball (0-40)">
+            <button class="btn-save" onclick="saveScore()">Saqlash</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3 id="chartTitle">Listening Diagrammasi</h3>
+        <div id="chartWrapper">
+            <canvas id="myChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    let chartInstance = null;
+
+    function getTasks() { return JSON.parse(localStorage.getItem('ielts_tasks') || '[]'); }
+    function setTasks(t) { localStorage.setItem('ielts_tasks', JSON.stringify(t)); }
+    function getScores() { return JSON.parse(localStorage.getItem('ielts_scores_v2') || '{"Listening":{}, "Reading":{}, "Writing":{}, "Speaking":{}}'); }
+
+    function addTask() {
+        const name = document.getElementById('taskInput').value;
+        const time = document.getElementById('timeInput').value;
+        if(!name || !time) return alert("To'liq kiriting!");
+        const tasks = getTasks();
+        tasks.push({ id: Date.now(), name, time, status: null });
+        setTasks(tasks);
+        document.getElementById('taskInput').value = '';
+        renderTasks();
+    }
+
+    function deleteTask(id) {
+        let tasks = getTasks();
+        tasks = tasks.filter(t => t.id !== id);
+        setTasks(tasks);
+        renderTasks();
+    }
+
+    function setStatus(id, status) {
+        const tasks = getTasks();
+        const index = tasks.findIndex(t => t.id === id);
+        tasks[index].status = (tasks[index].status === status) ? null : status;
+        setTasks(tasks);
+        renderTasks();
+    }
+
+    function renderTasks() {
+        const list = document.getElementById('taskList');
+        const tasks = getTasks();
+        list.innerHTML = '';
+        tasks.sort((a,b) => a.time.localeCompare(b.time));
+
+        tasks.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'task-item';
+            div.innerHTML = `
+                <div class="task-info">
+                    <span style="font-weight:600; color:${t.status === 'done' ? '#22c55e' : (t.status === 'fail' ? '#ef4444' : 'white')}">${t.name}</span>
+                    <span class="task-time">⏰ ${t.time}</span>
+                </div>
+                <div class="status-btns">
+                    <button class="btn-check ${t.status === 'done' ? 'active' : ''}" onclick="setStatus(${t.id}, 'done')">✔</button>
+                    <button class="btn-cross ${t.status === 'fail' ? 'active' : ''}" onclick="setStatus(${t.id}, 'fail')">✖</button>
+                    <button class="btn-del" onclick="deleteTask(${t.id})">🗑️</button>
+                </div>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    function saveScore() {
+        const score = document.getElementById('scoreInput').value;
+        const section = document.getElementById('sectionSelect').value;
+        
+        if(score === "" || score < 0 || score > 40) return alert("0-40 ball kiriting!");
+        
+        const scores = getScores();
+        const today = new Date().toLocaleDateString();
+        
+        scores[section][today] = parseInt(score);
+        localStorage.setItem('ielts_scores_v2', JSON.stringify(scores));
+        document.getElementById('scoreInput').value = '';
+        renderChart();
+    }
+
+    function renderChart() {
+        const section = document.getElementById('sectionSelect').value;
+        document.getElementById('chartTitle').innerText = section + " Diagrammasi";
+        
+        const allScores = getScores();
+        const sectionScores = allScores[section];
+        
+        const dates = Object.keys(sectionScores).slice(-7);
+        const values = dates.map(d => sectionScores[d]);
+        
+        const ctx = document.getElementById('myChart').getContext('2d');
+        if(chartInstance) { chartInstance.destroy(); }
+        
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{
+                    label: section + ' Ballari',
+                    data: values,
+                    borderColor: '#38bdf8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 3,
+                    pointRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, min: 0, max: 40, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+                    x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    function checkDailyReset() {
+        const today = new Date().toLocaleDateString();
+        const lastDate = localStorage.getItem('last_reset_date');
+        if(lastDate !== today) {
+            const tasks = getTasks();
+            tasks.forEach(t => t.status = null);
+            setTasks(tasks);
+            localStorage.setItem('last_reset_date', today);
+        }
+        document.getElementById('todayDate').innerText = today;
+    }
+
+    setInterval(() => {
+        const now = new Date();
+        const currentTime = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+        const tasks = getTasks();
+        tasks.forEach(t => {
+            if(t.time === currentTime && now.getSeconds() === 0) {
+                if(Notification.permission === "granted") {
+                    new Notification("IELTS Planner", { body: "Vaqt bo'ldi: " + t.name });
+                }
+            }
+        });
+    }, 1000);
+
+    if(Notification.permission !== "denied") Notification.requestPermission();
+
+    checkDailyReset();
+    renderTasks();
+    renderChart();
+</script>
+
+</body>
+</html>
